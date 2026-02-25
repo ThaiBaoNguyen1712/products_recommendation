@@ -45,7 +45,6 @@ class CollaborativeFiltering:
         self.user_ids = matrix.index.tolist()
 
         # 2. Matrix Factorization (SVD)
-        # Giữ n_components thấp hơn số lượng sản phẩm (1k sản phẩm -> 50-100 là ổn)
         n_comp = min(50, len(self.product_sys_ids) - 1)
         svd = TruncatedSVD(n_components=n_comp, random_state=42)
         
@@ -65,28 +64,56 @@ class CollaborativeFiltering:
             }, f)
         print(f"--- Training complete. Matrix shape: {self.predicted_matrix.shape} ---")
 
-    def get_recommendations(self, user_id: int, top_n: int = 10):
+    def get_recommendations(self, user_id: int, product_sys_id: str = None, top_n: int = 50):
         try:
-            # Tìm vị trí của user trong danh sách đã train
+            # 1. Tìm vị trí user
             user_idx = self.user_ids.index(user_id)
-            
-            # Lấy vector dự đoán của user này (chứa score cho từng product_sys_id)
             user_predictions = self.predicted_matrix[user_idx]
-            
-            # Gắn ID vào điểm số để sắp xếp
             preds_series = pd.Series(user_predictions, index=self.product_sys_ids)
+
+            # 2. LỌC THEO GIÁ VÀ CATEGORY NGAY TẠI ĐÂY (NẾU CÓ PRODUCT_SYS_ID)
+            if product_sys_id and self.products_info is not None:
+                # Tìm thông tin món đang xem
+                curr_item = self.products_info[self.products_info['product_sys_id'] == str(product_sys_id)]
+                
+                if not curr_item.empty:
+                    curr_price = curr_item['sellPrice'].values[0]
+                    curr_cat = curr_item['category_id'].values[0]
+
+                    # Lọc danh sách ID hợp lệ: Cùng category và giá trong khoảng 50% - 150%
+                    valid_items = self.products_info[
+                        (self.products_info['category_id'] == curr_cat) & 
+                        (self.products_info['sellPrice'] >= curr_price * 0.5) & 
+                        (self.products_info['sellPrice'] <= curr_price * 1.5)
+                    ]['product_sys_id'].tolist()
+
+                    # Giữ lại những dự đoán nằm trong tập valid
+                    preds_series = preds_series[preds_series.index.isin(valid_items)]
+
+            # 3. Lấy kết quả
+            buffer_n = max(top_n, 50) 
+            recommendations = preds_series.sort_values(ascending=False).head(buffer_n).index.tolist()
             
-            # Lấy Top N sản phẩm có score cao nhất (prd_...)
-            recommendations = preds_series.sort_values(ascending=False).head(top_n).index.tolist()
-            
+            # Nếu lọc xong bị ít quá, có thể lấy thêm popular bù vào (tùy chọn)
             return recommendations
             
         except (ValueError, IndexError):
-            # Trường hợp User mới (Cold Start): Gợi ý các sản phẩm có nhiều rating nhất (Popularity)
             print(f"--- User {user_id} not found. Returning popular items. ---")
             return self._get_popular_items(top_n)
 
     def _get_popular_items(self, top_n):
-        # Đây là fallback đơn giản: lấy N sản phẩm đầu tiên trong danh sách 
-        # (Lý tưởng nhất là bạn nên lấy từ một list 'Hot Products' đã tính trước)
-        return self.product_sys_ids[:top_n]
+        """Sử dụng SQL để lấy top sản phẩm có lượt rating cao nhất"""
+        try:
+            query = """
+                SELECT TOP {} p.product_sys_id
+                FROM Product p
+                JOIN (SELECT product_sys_id, COUNT(*) as vote_count FROM Ratings GROUP BY product_sys_id) r 
+                ON p.product_sys_id = r.product_sys_id
+                ORDER BY r.vote_count DESC
+            """.format(top_n)
+            
+            pop_df = pd.read_sql(query, self.engine)
+            return pop_df['product_sys_id'].astype(str).tolist()
+        except:
+            # Fallback nếu SQL lỗi
+            return self.product_sys_ids[:top_n]
