@@ -23,6 +23,9 @@ class SceneRecommendationFilter:
         self.llm_reranker = GroqPersonalizationReranker()
         self.candidate_limit = int(os.getenv("LLM_CANDIDATE_LIMIT", "20"))
         self.interest_event_limit = int(os.getenv("USER_INTEREST_EVENT_LIMIT", "200"))
+        self.last_llm_latency_ms = 0.0
+        self.last_llm_status = "idle"
+        self.last_source_ids: list[str] = []
 
     def get_user_product_sets(self, user_id: int):
         purchased_query = """
@@ -87,6 +90,9 @@ class SceneRecommendationFilter:
         )
 
     def get_recommendations_detail(self, user_id: int, product_sys_id: str, top_n: int = 11):
+        self.last_llm_latency_ms = 0.0
+        self.last_llm_status = "not_used"
+        self.last_source_ids = [str(product_sys_id).strip()]
         recommendations = recommend(product_sys_id, top_n=top_n + 5)
         purchased_set, cart_set, wishlist_set = self.get_user_product_sets(user_id)
 
@@ -152,6 +158,9 @@ class SceneRecommendationFilter:
         exclude: set[str],
         top_n: int,
     ) -> list[str]:
+        self.last_source_ids = [str(pid).strip() for pid in source_ids if str(pid).strip()]
+        self.last_llm_latency_ms = 0.0
+        self.last_llm_status = "not_used"
         interest_context = self._get_user_interest_context(user_id=user_id, source_ids=source_ids)
         self._boost_candidates_from_interest(
             candidate_scores=candidate_scores,
@@ -196,6 +205,8 @@ class SceneRecommendationFilter:
             candidate_products=candidate_products,
             top_n=top_n,
         )
+        self.last_llm_latency_ms = round(float(self.llm_reranker.last_latency_ms), 2)
+        self.last_llm_status = self.llm_reranker.last_status
 
         return self._merge_ranked_ids(ranked_ids, fallback_ids, top_n)
 
