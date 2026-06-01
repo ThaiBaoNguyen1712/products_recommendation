@@ -31,15 +31,20 @@ jobs:
           python -m venv antenv
           source antenv/bin/activate
           pip install -r requirements.txt
+
+      - name: Build release package
+        run: |
+          mkdir -p release
+          cp -r app release/app
+          cp -r db release/db
+          cp requirements.txt release/requirements.txt
+          cp README.md release/README.md
                 
-      # By default, when you enable GitHub CI/CD integration through the Azure portal, the platform automatically sets the SCM_DO_BUILD_DURING_DEPLOYMENT application setting to true. This triggers the use of Oryx, a build engine that handles application compilation and dependency installation (e.g., pip install) directly on the platform during deployment. Hence, we exclude the antenv virtual environment directory from the deployment artifact to reduce the payload size. 
       - name: Upload artifact for deployment jobs
         uses: actions/upload-artifact@v4
         with:
           name: python-app
-          path: |
-            .
-            !antenv/
+          path: release
 
       # 🚫 Opting Out of Oryx Build
       # If you prefer to disable the Oryx build process during deployment, follow these steps:
@@ -59,6 +64,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: python-app
+          path: release
       
       - name: Login to Azure
         uses: azure/login@v2
@@ -73,4 +79,5 @@ jobs:
         with:
           app-name: 'techstore-ai-service'
           slot-name: 'Production'
+          package: release
           
