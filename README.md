@@ -113,6 +113,39 @@ If virtual env is already activated:
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
+## Deploy on Vercel
+- Vercel entrypoint is [app/index.py](/D:/Projects/products-rcm-sys-api/app/index.py).
+- Python version is pinned in [.python-version](/D:/Projects/products-rcm-sys-api/.python-version).
+- The app keeps MSSQL as the database, but on Vercel it should use the pure-Python `pytds` path instead of `pyodbc`.
+
+Recommended Vercel environment variables:
+- `VERCEL=1`
+- `DB_RUNTIME_DRIVER=pytds`
+- `DB_SERVER`
+- `DB_PORT=1433`
+- `DB_NAME`
+- `DB_USERNAME`
+- `DB_PASSWORD`
+- `DB_ENCRYPT`
+- `DB_TRUST_SERVER_CERTIFICATE`
+- `UPSTASH_URL`
+- `UPSTASH_TOKEN`
+- `GROQ_API_KEY`
+- `GROQ_MODEL`
+- `GROQ_TIMEOUT_SECONDS`
+- `LLM_CANDIDATE_LIMIT`
+- `USER_INTEREST_EVENT_LIMIT`
+
+Optional:
+- `DB_SQLALCHEMY_URL`
+  Example: `mssql+pytds://username:password@host:1433/database`
+
+Deploy flow:
+```powershell
+vercel
+vercel --prod
+```
+
 ## Notes
 - This is a recommendation API, not a chatbot.
 - FastAPI should return recommendation IDs only.

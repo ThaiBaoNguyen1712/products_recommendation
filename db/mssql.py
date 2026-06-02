@@ -3,6 +3,8 @@ from urllib.parse import quote_plus
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
+from sqlalchemy.pool import NullPool
 
 load_dotenv()
 
@@ -62,43 +64,114 @@ def _normalize_connection_string(raw_connection_string: str) -> str:
     return ";".join(normalized_parts) + ";"
 
 
-connection_string = os.getenv("DB_CONNECTION_STRING")
-db_server = os.getenv("DB_SERVER")
-db_name = os.getenv("DB_NAME")
-username = os.getenv("DB_USERNAME")
-password = os.getenv("DB_PASSWORD")
-driver = os.getenv("DB_DRIVER", "ODBC Driver 17 for SQL Server")
-trusted_connection = os.getenv("DB_TRUSTED_CONNECTION", "").lower() in {"1", "true", "yes"}
-encrypt = os.getenv("DB_ENCRYPT", "yes")
-trust_server_certificate = os.getenv("DB_TRUST_SERVER_CERTIFICATE", "no")
-connect_timeout = os.getenv("DB_CONNECT_TIMEOUT", "5")
+def _get_engine_options() -> dict[str, object]:
+    options: dict[str, object] = {"pool_pre_ping": True}
+    if os.getenv("VERCEL", "").strip() == "1":
+        # Serverless functions should not hold open SQL connections between invocations.
+        options["poolclass"] = NullPool
+    return options
 
-if connection_string:
-    normalized_connection_string = _normalize_connection_string(connection_string.strip())
-    params = quote_plus(normalized_connection_string)
-else:
-    parts = [
-        f"DRIVER={{{driver}}}",
-        f"SERVER={db_server}",
-        f"DATABASE={db_name}",
-        f"Encrypt={encrypt}",
-        f"TrustServerCertificate={trust_server_certificate}",
-        f"Connection Timeout={connect_timeout}",
-    ]
 
-    if trusted_connection:
-        parts.append("Trusted_Connection=yes")
-    elif username and password:
-        parts.append(f"UID={username}")
-        parts.append(f"PWD={password}")
+def _split_server_and_port(server_value: str, fallback_port: str) -> tuple[str, str]:
+    normalized_server = server_value.strip()
+    normalized_port = fallback_port.strip()
+
+    if "," in normalized_server:
+        host, port = normalized_server.rsplit(",", 1)
+        host = host.strip()
+        port = port.strip()
+        if host:
+            normalized_server = host
+        if port:
+            normalized_port = port
+
+    return normalized_server, normalized_port
+
+
+def _build_pyodbc_engine() -> Engine:
+    connection_string = os.getenv("DB_CONNECTION_STRING", "").strip()
+    db_server = os.getenv("DB_SERVER", "").strip()
+    db_name = os.getenv("DB_NAME", "").strip()
+    username = os.getenv("DB_USERNAME", "").strip()
+    password = os.getenv("DB_PASSWORD", "").strip()
+    driver = os.getenv("DB_DRIVER", "ODBC Driver 17 for SQL Server").strip()
+    trusted_connection = os.getenv("DB_TRUSTED_CONNECTION", "").lower() in {"1", "true", "yes"}
+    encrypt = os.getenv("DB_ENCRYPT", "yes").strip()
+    trust_server_certificate = os.getenv("DB_TRUST_SERVER_CERTIFICATE", "no").strip()
+    connect_timeout = os.getenv("DB_CONNECT_TIMEOUT", "5").strip()
+
+    if connection_string:
+        normalized_connection_string = _normalize_connection_string(connection_string)
+        params = quote_plus(normalized_connection_string)
     else:
+        parts = [
+            f"DRIVER={{{driver}}}",
+            f"SERVER={db_server}",
+            f"DATABASE={db_name}",
+            f"Encrypt={encrypt}",
+            f"TrustServerCertificate={trust_server_certificate}",
+            f"Connection Timeout={connect_timeout}",
+        ]
+
+        if trusted_connection:
+            parts.append("Trusted_Connection=yes")
+        elif username and password:
+            parts.append(f"UID={username}")
+            parts.append(f"PWD={password}")
+        else:
+            raise RuntimeError(
+                "Database credentials are not configured for pyodbc. Set DB_CONNECTION_STRING, "
+                "enable DB_TRUSTED_CONNECTION=true, or provide DB_USERNAME/DB_PASSWORD."
+            )
+
+        params = quote_plus(";".join(parts) + ";")
+
+    connection_url = f"mssql+pyodbc:///?odbc_connect={params}"
+    return create_engine(connection_url, **_get_engine_options())
+
+
+def _build_pytds_engine() -> Engine:
+    sqlalchemy_url = os.getenv("DB_SQLALCHEMY_URL", "").strip()
+    if sqlalchemy_url:
+        return create_engine(sqlalchemy_url, **_get_engine_options())
+
+    db_server, db_port = _split_server_and_port(
+        server_value=os.getenv("DB_SERVER", ""),
+        fallback_port=os.getenv("DB_PORT", "1433"),
+    )
+    db_name = os.getenv("DB_NAME", "").strip()
+    username = os.getenv("DB_USERNAME", "").strip()
+    password = os.getenv("DB_PASSWORD", "").strip()
+
+    if not all([db_server, db_name, username, password]):
         raise RuntimeError(
-            "Database credentials are not configured. Set DB_CONNECTION_STRING, "
-            "enable DB_TRUSTED_CONNECTION=true, or provide DB_USERNAME/DB_PASSWORD."
+            "Database credentials are not configured for pytds. Set DB_SQLALCHEMY_URL or provide "
+            "DB_SERVER, DB_PORT, DB_NAME, DB_USERNAME, and DB_PASSWORD."
         )
 
-    params = quote_plus(";".join(parts) + ";")
+    connection_url = (
+        f"mssql+pytds://{quote_plus(username)}:{quote_plus(password)}"
+        f"@{db_server}:{db_port}/{db_name}"
+    )
+    return create_engine(connection_url, **_get_engine_options())
 
-connection_url = f"mssql+pyodbc:///?odbc_connect={params}"
 
-engine = create_engine(connection_url)
+def _resolve_driver_mode() -> str:
+    explicit_mode = os.getenv("DB_RUNTIME_DRIVER", "").strip().lower()
+    if explicit_mode in {"pyodbc", "pytds"}:
+        return explicit_mode
+
+    if os.getenv("VERCEL", "").strip() == "1":
+        return "pytds"
+
+    return "pyodbc"
+
+
+def create_mssql_engine() -> Engine:
+    driver_mode = _resolve_driver_mode()
+    if driver_mode == "pytds":
+        return _build_pytds_engine()
+    return _build_pyodbc_engine()
+
+
+engine = create_mssql_engine()
