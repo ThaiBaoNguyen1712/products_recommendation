@@ -17,6 +17,7 @@ pandas==2.3.3
 pydantic==2.12.5
 pydantic_core==2.41.5
 pyodbc==5.3.0
+pyOpenSSL==25.1.0
 python-tds==1.16.0
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.1
