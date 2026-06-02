@@ -1,6 +1,7 @@
 import os
 from urllib.parse import quote_plus
 
+import certifi
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
@@ -142,6 +143,11 @@ def _build_pytds_engine() -> Engine:
     db_name = os.getenv("DB_NAME", "").strip()
     username = os.getenv("DB_USERNAME", "").strip()
     password = os.getenv("DB_PASSWORD", "").strip()
+    encrypt = os.getenv("DB_ENCRYPT", "yes").strip().lower() in {"1", "true", "yes"}
+    trust_server_certificate = (
+        os.getenv("DB_TRUST_SERVER_CERTIFICATE", "no").strip().lower() in {"1", "true", "yes"}
+    )
+    connect_timeout = int(os.getenv("DB_CONNECT_TIMEOUT", "5").strip())
 
     if not all([db_server, db_name, username, password]):
         raise RuntimeError(
@@ -153,7 +159,19 @@ def _build_pytds_engine() -> Engine:
         f"mssql+pytds://{quote_plus(username)}:{quote_plus(password)}"
         f"@{db_server}:{db_port}/{db_name}"
     )
-    return create_engine(connection_url, **_get_engine_options())
+
+    engine_options = _get_engine_options()
+    engine_options["connect_args"] = {
+        "login_timeout": connect_timeout,
+        "timeout": connect_timeout,
+    }
+
+    if encrypt:
+        engine_options["connect_args"]["cafile"] = certifi.where()
+        engine_options["connect_args"]["validate_host"] = not trust_server_certificate
+        engine_options["connect_args"]["enc_login_only"] = False
+
+    return create_engine(connection_url, **engine_options)
 
 
 def _resolve_driver_mode() -> str:
