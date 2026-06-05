@@ -1,0 +1,20 @@
+{
+  "status": "ready",
+  "artifact_type": "file_based_vector_store",
+  "vector_provider": "hashing_normalized",
+  "vector_format": "numpy_float32",
+  "vector_dim": 2048,
+  "hash_features": 2048,
+  "product_count": 1003,
+  "trigger": "sync_product_incremental",
+  "sync_action": "upsert",
+  "synced_product_sys_id": "prd_3622e7a0d1",
+  "built_at": "2026-06-05T15:35:29+00:00",
+  "files": {
+    "products": "data\\products.json",
+    "product_ids": "data\\product_ids.json",
+    "product_vectors": "data\\product_vectors.npy",
+    "accessory_rules": "data\\accessory_rules.json",
+    "offline_rerank_scores": "data\\offline_rerank_scores.json"
+  }
+}

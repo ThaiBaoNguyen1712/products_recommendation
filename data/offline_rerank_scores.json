@@ -1,0 +1,10 @@
+{
+  "meta": {
+    "status": "disabled",
+    "trigger": "sync_product",
+    "reason": "offline_llm_refresh_disabled"
+  },
+  "homepage": {},
+  "wishlist": {},
+  "cart": {}
+}

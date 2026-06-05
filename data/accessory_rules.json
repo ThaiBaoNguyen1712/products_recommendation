@@ -1,0 +1,43 @@
+{
+  "gaming_laptop": [
+    "gaming_mouse",
+    "mechanical_keyboard",
+    "cooling_pad",
+    "gaming_headset",
+    "monitor"
+  ],
+  "office_laptop": [
+    "wireless_mouse",
+    "laptop_bag",
+    "usb_hub",
+    "monitor"
+  ],
+  "iphone": [
+    "phone_case",
+    "screen_protector",
+    "charger",
+    "airpods",
+    "power_bank"
+  ],
+  "android_phone": [
+    "phone_case",
+    "screen_protector",
+    "charger",
+    "earbuds",
+    "power_bank"
+  ],
+  "monitor": [
+    "hdmi_cable",
+    "displayport_cable",
+    "monitor_arm",
+    "keyboard",
+    "mouse"
+  ],
+  "desktop_pc": [
+    "monitor",
+    "keyboard",
+    "mouse",
+    "speaker",
+    "ups"
+  ]
+}
