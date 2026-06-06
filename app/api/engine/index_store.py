@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from sklearn.feature_extraction.text import HashingVectorizer
 from sklearn.preprocessing import Normalizer
+from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -111,7 +112,7 @@ def _fetch_products_df(db_engine: Engine) -> pd.DataFrame:
 
 
 def _fetch_product_df_by_id(db_engine: Engine, product_sys_id: str) -> pd.DataFrame:
-    query = """
+    query = text("""
     SELECT
         p.product_sys_id,
         p.name,
@@ -137,8 +138,10 @@ def _fetch_product_df_by_id(db_engine: Engine, product_sys_id: str) -> pd.DataFr
         p.status,
         ct.name,
         b.name
-    """
-    return _normalize_products_df(pd.read_sql(query, db_engine, params=(str(product_sys_id).strip(),)))
+    """)
+    return _normalize_products_df(
+        pd.read_sql(query, db_engine, params={"product_sys_id": str(product_sys_id).strip()})
+    )
 
 
 def _normalize_products_df(df: pd.DataFrame) -> pd.DataFrame:

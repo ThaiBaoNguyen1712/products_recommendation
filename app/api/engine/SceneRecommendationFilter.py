@@ -7,6 +7,7 @@ from typing import Any
 import pandas as pd
 import upstash_redis as redis
 from dotenv import load_dotenv
+from sqlalchemy import text
 
 from app.api.engine.content_based import get_product_profiles, recommend
 from app.api.engine.index_store import ACCESSORY_RULES_PATH, OFFLINE_RERANK_SCORES_PATH
@@ -42,30 +43,31 @@ class SceneRecommendationFilter:
         }
 
     def get_user_product_sets(self, user_id: int):
-        purchased_query = """
+        purchased_query = text("""
         SELECT DISTINCT p.product_sys_id
         FROM OrderItem oi
         JOIN [Order] o ON oi.order_id = o.order_id
         JOIN Product p ON oi.product_id = p.product_id
-        WHERE o.user_id = ?
-        """
-        cart_query = """
+        WHERE o.user_id = :user_id
+        """)
+        cart_query = text("""
         SELECT DISTINCT p.product_sys_id
         FROM CartItem ci
         JOIN Cart c ON ci.cart_id = c.cart_id
         JOIN Product p ON ci.product_id = p.product_id
-        WHERE c.user_id = ?
-        """
-        wishlist_query = """
+        WHERE c.user_id = :user_id
+        """)
+        wishlist_query = text("""
         SELECT DISTINCT p.product_sys_id
         FROM Wishlist wl
         JOIN Product p ON wl.product_id = p.product_id
-        WHERE wl.user_id = ?
-        """
+        WHERE wl.user_id = :user_id
+        """)
 
-        purchased_df = pd.read_sql(purchased_query, self.engine, params=(user_id,))
-        cart_df = pd.read_sql(cart_query, self.engine, params=(user_id,))
-        wishlist_df = pd.read_sql(wishlist_query, self.engine, params=(user_id,))
+        params = {"user_id": int(user_id)}
+        purchased_df = pd.read_sql(purchased_query, self.engine, params=params)
+        cart_df = pd.read_sql(cart_query, self.engine, params=params)
+        wishlist_df = pd.read_sql(wishlist_query, self.engine, params=params)
 
         return (
             set(purchased_df["product_sys_id"].astype(str).str.strip()),
@@ -352,8 +354,9 @@ class SceneRecommendationFilter:
                     reason_code_by_id[normalized_candidate_id] = reason_code
 
     def _get_user_interest_context(self, user_id: int, source_ids: list[str]) -> dict[str, Any]:
-        query = """
-        SELECT TOP (?)
+        limit = max(int(self.interest_event_limit), 1)
+        query = text(f"""
+        SELECT TOP ({limit})
             p.product_sys_id,
             ct.name AS category,
             b.name AS brand,
@@ -367,15 +370,15 @@ class SceneRecommendationFilter:
         JOIN Product p ON upe.product_id = p.product_id
         JOIN Category ct ON p.category_id = ct.category_id
         JOIN Brand b ON p.brandId = b.BrandId
-        WHERE upe.user_id = ?
+        WHERE upe.user_id = :user_id
         ORDER BY
             upe.interaction_score DESC,
             upe.last_interacted_at DESC,
             upe.id DESC
-        """
+        """)
 
         try:
-            df = pd.read_sql(query, self.engine, params=(self.interest_event_limit, user_id))
+            df = pd.read_sql(query, self.engine, params={"user_id": int(user_id)})
         except Exception:
             return {
                 "product_scores": {},
