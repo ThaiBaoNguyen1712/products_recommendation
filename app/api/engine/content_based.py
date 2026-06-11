@@ -11,7 +11,7 @@ from sklearn.preprocessing import Normalizer
 from db.mssql import engine
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DATA_DIR = REPO_ROOT / "data"
+DATA_DIR = Path(os.getenv("RUNTIME_DATA_DIR", "/tmp/products-rcm-sys-api/data")).resolve() if os.getenv("VERCEL", "").strip() == "1" else REPO_ROOT / "data"
 PRODUCTS_PATH = DATA_DIR / "products.json"
 PRODUCT_IDS_PATH = DATA_DIR / "product_ids.json"
 PRODUCT_VECTORS_PATH = DATA_DIR / "product_vectors.npy"

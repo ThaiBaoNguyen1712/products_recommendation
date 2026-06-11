@@ -2,6 +2,7 @@ import json
 import os
 import html
 import re
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -14,7 +15,9 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DATA_DIR = REPO_ROOT / "data"
+BUNDLED_DATA_DIR = REPO_ROOT / "data"
+RUNTIME_DATA_DIR = Path(os.getenv("RUNTIME_DATA_DIR", "/tmp/products-rcm-sys-api/data")).resolve()
+DATA_DIR = RUNTIME_DATA_DIR if os.getenv("VERCEL", "").strip() == "1" else BUNDLED_DATA_DIR
 PRODUCTS_PATH = DATA_DIR / "products.json"
 PRODUCT_IDS_PATH = DATA_DIR / "product_ids.json"
 PRODUCT_VECTORS_PATH = DATA_DIR / "product_vectors.npy"
@@ -49,6 +52,22 @@ def _utc_now_iso() -> str:
 
 def _ensure_data_dir() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+    if DATA_DIR == BUNDLED_DATA_DIR:
+        return
+
+    for bundled_path in BUNDLED_DATA_DIR.glob("*"):
+        target_path = DATA_DIR / bundled_path.name
+        if target_path.exists():
+            continue
+        if bundled_path.is_file():
+            shutil.copy2(bundled_path, target_path)
+
+
+def _display_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
 
 
 def _write_json(path: Path, payload: Any) -> None:
@@ -128,7 +147,7 @@ def _fetch_product_df_by_id(db_engine: Engine, product_sys_id: str) -> pd.DataFr
     JOIN Category ct ON p.category_id = ct.category_id
     LEFT JOIN SpecValue svl ON p.product_id = svl.product_id
     LEFT JOIN Specs s ON svl.spec_id = s.spec_id
-    WHERE p.product_sys_id = ?
+    WHERE p.product_sys_id = :product_sys_id
     GROUP BY
         p.product_sys_id,
         p.name,
@@ -281,11 +300,11 @@ def _write_index_files(
         "synced_product_sys_id": str(product_sys_id).strip() if product_sys_id else None,
         "built_at": _utc_now_iso(),
         "files": {
-            "products": str(PRODUCTS_PATH.relative_to(REPO_ROOT)),
-            "product_ids": str(PRODUCT_IDS_PATH.relative_to(REPO_ROOT)),
-            "product_vectors": str(PRODUCT_VECTORS_PATH.relative_to(REPO_ROOT)),
-            "accessory_rules": str(ACCESSORY_RULES_PATH.relative_to(REPO_ROOT)),
-            "offline_rerank_scores": str(OFFLINE_RERANK_SCORES_PATH.relative_to(REPO_ROOT)),
+            "products": _display_path(PRODUCTS_PATH),
+            "product_ids": _display_path(PRODUCT_IDS_PATH),
+            "product_vectors": _display_path(PRODUCT_VECTORS_PATH),
+            "accessory_rules": _display_path(ACCESSORY_RULES_PATH),
+            "offline_rerank_scores": _display_path(OFFLINE_RERANK_SCORES_PATH),
         },
     }
     _write_json(INDEX_META_PATH, index_meta)
@@ -413,6 +432,6 @@ def read_index_status() -> dict[str, Any]:
     else:
         metadata = {"status": "missing", "built_at": None}
 
-    metadata["data_dir"] = str(DATA_DIR.relative_to(REPO_ROOT))
+    metadata["data_dir"] = _display_path(DATA_DIR)
     metadata["files_exist"] = file_status
     return metadata
