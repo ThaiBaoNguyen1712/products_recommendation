@@ -7,7 +7,7 @@ from sqlalchemy.engine import Engine
 
 from app.api.engine.content_based import get_product_profiles, recommend
 from app.api.engine.index_store import OFFLINE_RERANK_SCORES_PATH, PRODUCTS_PATH
-from app.api.engine.llm_personalization import GroqPersonalizationReranker
+from app.api.engine.llm_personalization import OpenRouterPersonalizationReranker
 
 SCENES = ("homepage", "wishlist", "cart")
 
@@ -40,7 +40,7 @@ def refresh_offline_rerank_scores(
     del db_engine
 
     enabled = os.getenv("ENABLE_OFFLINE_LLM_REFRESH", "false").strip().lower() in {"1", "true", "yes"}
-    reranker = GroqPersonalizationReranker()
+    reranker = OpenRouterPersonalizationReranker()
     if not enabled or not reranker.enabled:
         payload = {
             "meta": {

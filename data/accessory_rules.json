@@ -1,43 +1,60 @@
 {
-  "gaming_laptop": [
-    "gaming_mouse",
-    "mechanical_keyboard",
-    "cooling_pad",
-    "gaming_headset",
-    "monitor"
+  "dien_thoai": [
+    "phu_kien",
+    "dong_ho_thong_minh",
+    "nha_thong_minh"
   ],
-  "office_laptop": [
-    "wireless_mouse",
-    "laptop_bag",
-    "usb_hub",
-    "monitor"
+  "phu_kien": [
+    "dien_thoai",
+    "laptop",
+    "may_tinh_bang",
+    "dong_ho_thong_minh",
+    "nha_thong_minh"
   ],
-  "iphone": [
-    "phone_case",
-    "screen_protector",
-    "charger",
-    "airpods",
-    "power_bank"
+  "laptop": [
+    "phu_kien",
+    "man_hinh",
+    "may_in"
   ],
-  "android_phone": [
-    "phone_case",
-    "screen_protector",
-    "charger",
-    "earbuds",
-    "power_bank"
+  "may_tinh_bang": [
+    "phu_kien",
+    "may_in",
+    "tivi"
   ],
-  "monitor": [
-    "hdmi_cable",
-    "displayport_cable",
-    "monitor_arm",
-    "keyboard",
-    "mouse"
+  "dong_ho_thong_minh": [
+    "dien_thoai",
+    "phu_kien"
   ],
-  "desktop_pc": [
-    "monitor",
-    "keyboard",
-    "mouse",
-    "speaker",
-    "ups"
+  "nha_thong_minh": [
+    "dien_thoai",
+    "phu_kien",
+    "may_tinh_bang",
+    "dong_ho_thong_minh",
+    "tivi"
+  ],
+  "man_hinh": [
+    "laptop",
+    "may_tinh_de_ban",
+    "phu_kien"
+  ],
+  "tivi": [
+    "phu_kien",
+    "dien_thoai",
+    "nha_thong_minh",
+    "laptop"
+  ],
+  "may_in": [
+    "laptop",
+    "may_tinh_de_ban",
+    "phu_kien",
+    "may_tinh_bang"
+  ],
+  "do_gia_dung": [
+    "phu_kien"
+  ],
+  "may_tinh_de_ban": [
+    "man_hinh",
+    "phu_kien",
+    "may_in"
   ]
 }

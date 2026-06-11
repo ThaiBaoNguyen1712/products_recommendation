@@ -9,14 +9,31 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-class GroqPersonalizationReranker:
+class OpenRouterPersonalizationReranker:
     def __init__(self):
-        self.api_key = os.getenv("GROQ_API_KEY", "").strip()
-        self.model = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant").strip()
-        self.timeout = float(os.getenv("GROQ_TIMEOUT_SECONDS", "12"))
-        self.source_limit = int(os.getenv("GROQ_SOURCE_LIMIT", "3"))
-        self.candidate_limit = int(os.getenv("GROQ_RERANK_CANDIDATE_LIMIT", "8"))
-        self.description_limit = int(os.getenv("GROQ_DESCRIPTION_LIMIT", "80"))
+        self.api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+        self.model = (
+            os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-v4-flash").strip()
+            or "deepseek/deepseek-v4-flash"
+        )
+        self.base_url = os.getenv(
+            "OPENROUTER_BASE_URL",
+            "https://openrouter.ai/api/v1/chat/completions",
+        ).strip()
+        self.timeout = float(os.getenv("OPENROUTER_TIMEOUT_SECONDS", "20").strip() or "20")
+        self.source_limit = int(os.getenv("OPENROUTER_SOURCE_LIMIT", "3").strip() or "3")
+        self.candidate_limit = int(
+            os.getenv("OPENROUTER_RERANK_CANDIDATE_LIMIT", "8").strip() or "8"
+        )
+        self.description_limit = int(
+            os.getenv("OPENROUTER_DESCRIPTION_LIMIT", "80").strip() or "80"
+        )
+        self.reasoning_enabled = (
+            os.getenv("OPENROUTER_REASONING_ENABLED", "true").strip().lower()
+            in {"1", "true", "yes"}
+        )
+        self.http_referer = os.getenv("OPENROUTER_HTTP_REFERER", "").strip()
+        self.app_title = os.getenv("OPENROUTER_APP_TITLE", "products-rcm-sys-api").strip()
         self.enabled = bool(self.api_key)
         self.last_latency_ms = 0.0
         self.last_status = "disabled" if not self.enabled else "idle"
@@ -63,14 +80,14 @@ class GroqPersonalizationReranker:
         try:
             body = response.json()
             content = body["choices"][0]["message"]["content"]
-            parsed = json.loads(content)
+            parsed = self._parse_json_content(content)
             ranked_ids = parsed.get("ranked_product_ids", [])
             if not isinstance(ranked_ids, list):
                 self.last_status = "parse_error"
                 self.last_error = "ranked_product_ids_not_list"
                 return []
             self.last_status = "success"
-            return [str(pid) for pid in ranked_ids]
+            return [str(pid).strip() for pid in ranked_ids if str(pid).strip()]
         except Exception:
             self.last_status = "parse_error"
             self.last_error = "invalid_json_content"
@@ -86,7 +103,7 @@ class GroqPersonalizationReranker:
         system_prompt = (
             "Rank ecommerce candidate product IDs for a technology store. "
             "Use only provided candidate IDs. Favor relevance, accessory fit, price fit, brand/category fit, and stock. "
-            "Return JSON only: {\"ranked_product_ids\": [\"...\"]}."
+            "Return strict JSON only with this shape: {\"ranked_product_ids\": [\"...\"]}."
         )
 
         user_prompt = {
@@ -102,37 +119,33 @@ class GroqPersonalizationReranker:
             "candidates": candidate_products,
         }
 
-        return {
+        payload: dict[str, Any] = {
             "model": self.model,
-            "temperature": 0.2,
-            "max_tokens": 300,
-            "response_format": {"type": "json_object"},
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": json.dumps(user_prompt, ensure_ascii=True)},
             ],
+            "temperature": 0.2,
         }
+        if self.reasoning_enabled:
+            payload["reasoning"] = {"enabled": True}
+        return payload
 
     def _post_with_retry(self, payload: dict[str, Any]) -> httpx.Response:
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        if self.http_referer:
+            headers["HTTP-Referer"] = self.http_referer
+        if self.app_title:
+            headers["X-Title"] = self.app_title
+
         with httpx.Client(timeout=self.timeout) as client:
-            response = client.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-            )
+            response = client.post(self.base_url, headers=headers, json=payload)
             if response.status_code == 413:
                 reduced_payload = self._shrink_payload(payload)
-                retry_response = client.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json=reduced_payload,
-                )
+                retry_response = client.post(self.base_url, headers=headers, json=reduced_payload)
                 retry_response.raise_for_status()
                 return retry_response
             response.raise_for_status()
@@ -157,7 +170,7 @@ class GroqPersonalizationReranker:
         limit: int,
         include_base_score: bool,
     ) -> list[dict[str, Any]]:
-        compacted = []
+        compacted: list[dict[str, Any]] = []
         for product in products[:limit]:
             compact = {
                 "id": str(product.get("product_id", "")).strip(),
@@ -167,7 +180,10 @@ class GroqPersonalizationReranker:
                 "p": round(float(product.get("price", 0.0) or 0.0), 2),
                 "st": int(product.get("stock", 0) or 0),
             }
-            description = self._truncate_text(product.get("description", ""), self.description_limit)
+            description = self._truncate_text(
+                product.get("description_text") or product.get("description", ""),
+                self.description_limit,
+            )
             if description:
                 compact["d"] = description
             if include_base_score:
@@ -181,3 +197,28 @@ class GroqPersonalizationReranker:
         if len(text) <= max_len:
             return text
         return text[: max_len - 3].rstrip() + "..."
+
+    def _parse_json_content(self, content: Any) -> dict[str, Any]:
+        text = str(content or "").strip()
+        if not text:
+            return {}
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+
+        if text.startswith("```"):
+            lines = text.splitlines()
+            if lines and lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].startswith("```"):
+                lines = lines[:-1]
+            fenced = "\n".join(lines).strip()
+            if fenced:
+                return json.loads(fenced)
+
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            return json.loads(text[start : end + 1])
+        raise json.JSONDecodeError("No JSON object found", text, 0)

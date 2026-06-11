@@ -5,6 +5,7 @@ from fastapi import FastAPI, Response
 from fastapi.concurrency import asynccontextmanager
 from pydantic import BaseModel, Field
 
+from app.api.engine.accessory_rules_refresh import refresh_accessory_rules
 from app.api.engine.SceneRecommendationFilter import SceneRecommendationFilter
 from app.api.engine.content_based import load_all_data, recommend
 from app.api.engine.index_store import build_file_index, ensure_file_index, read_index_status, sync_product_index
@@ -203,12 +204,14 @@ def get_index_status():
 @app.post("/admin/rebuild-index")
 def rebuild_index():
     artifact_status = build_file_index(engine, trigger="admin_rebuild")
+    accessory_rules_status = refresh_accessory_rules(trigger="admin_rebuild")
     load_all_data()
     offline_refresh = refresh_offline_rerank_scores(engine, trigger="admin_rebuild")
     cache_version = recommendation_cache.invalidate_all()
     return {
         "message": "File-based recommendation index rebuilt successfully.",
         "index": artifact_status,
+        "accessory_rules": accessory_rules_status,
         "offline_rerank": offline_refresh,
         "cache_version": cache_version,
     }
@@ -222,18 +225,17 @@ def sync_product(request: SyncProductRequest):
         action=request.action,
     )
     load_all_data()
-    offline_refresh = refresh_offline_rerank_scores(
-        engine,
-        product_sys_id=request.product_sys_id,
-        trigger="sync_product",
-    )
     cache_version = recommendation_cache.invalidate_all()
     return {
-        "message": "Product sync completed with incremental artifact update.",
+        "message": "Product sync completed with incremental artifact update. Offline rerank was not executed.",
         "product_sys_id": request.product_sys_id.strip(),
         "action": request.action,
         "index": artifact_status,
-        "offline_rerank": offline_refresh,
+        "offline_rerank": {
+            "status": "skipped",
+            "trigger": "sync_product",
+            "reason": "offline_rerank_runs_only_on_rebuild",
+        },
         "cache_version": cache_version,
     }
 

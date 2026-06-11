@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -272,7 +273,11 @@ class SceneRecommendationFilter:
         ]
 
     def _slugify(self, value: str) -> str:
-        text = re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower())
+        text = str(value or "").strip().lower()
+        text = text.replace("đ", "d")
+        text = unicodedata.normalize("NFKD", text)
+        text = "".join(char for char in text if not unicodedata.combining(char))
+        text = re.sub(r"[^a-z0-9]+", "_", text)
         return text.strip("_")
 
     def _apply_scene_rule_scores(

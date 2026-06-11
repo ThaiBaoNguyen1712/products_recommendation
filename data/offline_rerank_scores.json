@@ -1,7 +1,7 @@
 {
   "meta": {
     "status": "disabled",
-    "trigger": "sync_product",
+    "trigger": "admin_rebuild",
     "reason": "offline_llm_refresh_disabled"
   },
   "homepage": {},
