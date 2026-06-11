@@ -10,6 +10,25 @@ from sqlalchemy.pool import NullPool
 load_dotenv()
 
 
+def _default_db_timeout_seconds() -> str:
+    if os.getenv("VERCEL", "").strip() == "1":
+        return "90"
+    return "5"
+
+
+def _resolve_db_timeout_seconds() -> str:
+    raw_timeout = os.getenv("DB_CONNECT_TIMEOUT", _default_db_timeout_seconds()).strip()
+    try:
+        timeout_seconds = int(raw_timeout)
+    except ValueError:
+        timeout_seconds = int(_default_db_timeout_seconds())
+
+    if os.getenv("VERCEL", "").strip() == "1":
+        timeout_seconds = max(timeout_seconds, 90)
+
+    return str(timeout_seconds)
+
+
 def _to_odbc_bool(value: str) -> str:
     return "yes" if value.strip().lower() in {"1", "true", "yes"} else "no"
 
@@ -99,7 +118,7 @@ def _build_pyodbc_engine() -> Engine:
     trusted_connection = os.getenv("DB_TRUSTED_CONNECTION", "").lower() in {"1", "true", "yes"}
     encrypt = os.getenv("DB_ENCRYPT", "yes").strip()
     trust_server_certificate = os.getenv("DB_TRUST_SERVER_CERTIFICATE", "no").strip()
-    connect_timeout = os.getenv("DB_CONNECT_TIMEOUT", "5").strip()
+    connect_timeout = _resolve_db_timeout_seconds()
 
     if connection_string:
         normalized_connection_string = _normalize_connection_string(connection_string)
@@ -147,7 +166,7 @@ def _build_pytds_engine() -> Engine:
     trust_server_certificate = (
         os.getenv("DB_TRUST_SERVER_CERTIFICATE", "no").strip().lower() in {"1", "true", "yes"}
     )
-    connect_timeout = int(os.getenv("DB_CONNECT_TIMEOUT", "5").strip())
+    connect_timeout = int(_resolve_db_timeout_seconds())
 
     if not all([db_server, db_name, username, password]):
         raise RuntimeError(
