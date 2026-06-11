@@ -101,8 +101,9 @@ def _clean_html_text(value: Any, max_len: int | None = None) -> str:
 
 
 def _fetch_products_df(db_engine: Engine) -> pd.DataFrame:
-    query = """
+    base_query = """
     SELECT
+        p.product_id,
         p.product_sys_id,
         p.name,
         p.description,
@@ -110,29 +111,33 @@ def _fetch_products_df(db_engine: Engine) -> pd.DataFrame:
         p.stock,
         p.status,
         ct.name AS category,
-        b.name AS brand,
-        STRING_AGG(CONCAT(s.name, ' ', svl.value), ' ') AS specs_text
+        b.name AS brand
     FROM Product p
     JOIN Brand b ON p.brandId = b.BrandId
     JOIN Category ct ON p.category_id = ct.category_id
-    LEFT JOIN SpecValue svl ON p.product_id = svl.product_id
-    LEFT JOIN Specs s ON svl.spec_id = s.spec_id
-    GROUP BY
-        p.product_sys_id,
-        p.name,
-        p.description,
-        p.sellPrice,
-        p.stock,
-        p.status,
-        ct.name,
-        b.name
     """
-    return _normalize_products_df(pd.read_sql(query, db_engine))
+    specs_query = """
+    SELECT
+        svl.product_id,
+        STRING_AGG(CONCAT(s.name, ' ', svl.value), ' ') AS specs_text
+    FROM SpecValue svl
+    JOIN Specs s ON svl.spec_id = s.spec_id
+    GROUP BY svl.product_id
+    """
+
+    base_df = pd.read_sql(base_query, db_engine)
+    specs_df = pd.read_sql(specs_query, db_engine)
+    if not specs_df.empty:
+        base_df = base_df.merge(specs_df, on="product_id", how="left")
+    if "specs_text" not in base_df.columns:
+        base_df["specs_text"] = ""
+    return _normalize_products_df(base_df)
 
 
 def _fetch_product_df_by_id(db_engine: Engine, product_sys_id: str) -> pd.DataFrame:
-    query = text("""
+    base_query = text("""
     SELECT
+        p.product_id,
         p.product_sys_id,
         p.name,
         p.description,
@@ -140,27 +145,30 @@ def _fetch_product_df_by_id(db_engine: Engine, product_sys_id: str) -> pd.DataFr
         p.stock,
         p.status,
         ct.name AS category,
-        b.name AS brand,
-        STRING_AGG(CONCAT(s.name, ' ', svl.value), ' ') AS specs_text
+        b.name AS brand
     FROM Product p
     JOIN Brand b ON p.brandId = b.BrandId
     JOIN Category ct ON p.category_id = ct.category_id
-    LEFT JOIN SpecValue svl ON p.product_id = svl.product_id
-    LEFT JOIN Specs s ON svl.spec_id = s.spec_id
     WHERE p.product_sys_id = :product_sys_id
-    GROUP BY
-        p.product_sys_id,
-        p.name,
-        p.description,
-        p.sellPrice,
-        p.stock,
-        p.status,
-        ct.name,
-        b.name
     """)
-    return _normalize_products_df(
-        pd.read_sql(query, db_engine, params={"product_sys_id": str(product_sys_id).strip()})
-    )
+    specs_query = text("""
+    SELECT
+        svl.product_id,
+        STRING_AGG(CONCAT(s.name, ' ', svl.value), ' ') AS specs_text
+    FROM SpecValue svl
+    JOIN Specs s ON svl.spec_id = s.spec_id
+    JOIN Product p ON p.product_id = svl.product_id
+    WHERE p.product_sys_id = :product_sys_id
+    GROUP BY svl.product_id
+    """)
+    params = {"product_sys_id": str(product_sys_id).strip()}
+    base_df = pd.read_sql(base_query, db_engine, params=params)
+    specs_df = pd.read_sql(specs_query, db_engine, params=params)
+    if not specs_df.empty:
+        base_df = base_df.merge(specs_df, on="product_id", how="left")
+    if "specs_text" not in base_df.columns:
+        base_df["specs_text"] = ""
+    return _normalize_products_df(base_df)
 
 
 def _normalize_products_df(df: pd.DataFrame) -> pd.DataFrame:
@@ -173,6 +181,8 @@ def _normalize_products_df(df: pd.DataFrame) -> pd.DataFrame:
     df["stock"] = pd.to_numeric(df["stock"], errors="coerce").fillna(0).astype(int)
     df["product_sys_id"] = df["product_sys_id"].astype(str).str.strip()
     df = df[df["product_sys_id"] != ""].drop_duplicates(subset=["product_sys_id"]).reset_index(drop=True)
+    if "product_id" in df.columns:
+        df["product_id"] = pd.to_numeric(df["product_id"], errors="coerce").fillna(0).astype(int)
     df["name"] = df["name"].map(lambda value: _clean_text(value, 200))
     df["description"] = df["description"].map(lambda value: _clean_text(value, 1500))
     df["status"] = df["status"].map(lambda value: _clean_text(value, 60))
