@@ -82,13 +82,23 @@ class SceneRecommendationFilter:
         recent_viewed = [
             pid.decode("utf-8") if isinstance(pid, bytes) else str(pid)
             for pid in recent_viewed_raw
+            if str(pid).strip() and str(pid).strip().lower() != "null"
         ]
-
-        if not recent_viewed:
-            return []
 
         purchased_set, cart_set, wishlist_set = self.get_user_product_sets(user_id)
         exclude = purchased_set.union(cart_set).union(wishlist_set)
+
+        if not recent_viewed:
+            recent_viewed = list(cart_set or wishlist_set or purchased_set)
+            if not recent_viewed:
+                interest_context = self._get_user_interest_context(user_id=user_id, source_ids=[])
+                recent_viewed = [
+                    pid for pid in interest_context.get("recent_interest_products", [])[:5]
+                    if pid not in exclude
+                ]
+
+        if not recent_viewed:
+            return []
 
         candidate_scores: dict[str, float] = {}
         recent_count = max(len(recent_viewed), 1)
