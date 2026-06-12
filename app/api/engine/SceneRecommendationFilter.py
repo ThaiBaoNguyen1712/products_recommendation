@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-import upstash_redis as redis
 from dotenv import load_dotenv
 from sqlalchemy import text
 
@@ -20,10 +19,6 @@ load_dotenv()
 class SceneRecommendationFilter:
     def __init__(self):
         self.engine = engine
-        self.redis_client = redis.Redis(
-            url=os.getenv("UPSTASH_URL"),
-            token=os.getenv("UPSTASH_TOKEN"),
-        )
         self.candidate_limit = int(os.getenv("LLM_CANDIDATE_LIMIT", "20"))
         self.interest_event_limit = int(os.getenv("USER_INTEREST_EVENT_LIMIT", "100"))
         self.last_llm_latency_ms = 0.0
@@ -77,25 +72,13 @@ class SceneRecommendationFilter:
         )
 
     def get_recommendations_homepage(self, user_id: int, top_n: int = 50):
-        list_key = f"user:{user_id}:latest_watched" if user_id else f"guest:{user_id}:latest_watched"
-        recent_viewed_raw = self.redis_client.lrange(list_key, 0, 9)
-        recent_viewed = [
-            pid.decode("utf-8") if isinstance(pid, bytes) else str(pid)
-            for pid in recent_viewed_raw
-            if str(pid).strip() and str(pid).strip().lower() != "null"
-        ]
-
         purchased_set, cart_set, wishlist_set = self.get_user_product_sets(user_id)
         exclude = purchased_set.union(cart_set).union(wishlist_set)
 
-        if not recent_viewed:
-            recent_viewed = list(cart_set or wishlist_set or purchased_set)
-            if not recent_viewed:
-                interest_context = self._get_user_interest_context(user_id=user_id, source_ids=[])
-                recent_viewed = [
-                    pid for pid in interest_context.get("recent_interest_products", [])[:5]
-                    if pid not in exclude
-                ]
+        recent_viewed, interest_context = self._get_homepage_source_ids(
+            user_id=user_id,
+            exclude=exclude,
+        )
 
         if not recent_viewed:
             return []
@@ -119,6 +102,7 @@ class SceneRecommendationFilter:
             candidate_scores=candidate_scores,
             exclude=exclude,
             top_n=top_n,
+            interest_context=interest_context,
         )
 
     def get_recommendations_detail(self, user_id: int, product_sys_id: str, top_n: int = 11):
@@ -201,12 +185,14 @@ class SceneRecommendationFilter:
         candidate_scores: dict[str, float],
         exclude: set[str],
         top_n: int,
+        interest_context: dict[str, Any] | None = None,
     ) -> list[str]:
         self.last_source_ids = [str(pid).strip() for pid in source_ids if str(pid).strip()]
         self.last_llm_latency_ms = 0.0
         self.last_llm_status = "not_used"
         self.last_recommendation_items = []
-        interest_context = self._get_user_interest_context(user_id=user_id, source_ids=source_ids)
+        if interest_context is None:
+            interest_context = self._get_user_interest_context(user_id=user_id, source_ids=source_ids)
         reason_code_by_id: dict[str, str] = {}
         self._boost_candidates_from_interest(
             candidate_scores=candidate_scores,
@@ -258,6 +244,33 @@ class SceneRecommendationFilter:
             reason_code_by_id=reason_code_by_id,
         )
         return fallback_ids[:top_n]
+
+    def _get_homepage_source_ids(
+        self,
+        user_id: int,
+        exclude: set[str],
+    ) -> tuple[list[str], dict[str, Any]]:
+        if not user_id:
+            return [], {
+                "product_scores": {},
+                "category_scores": {},
+                "brand_scores": {},
+                "recent_interest_products": [],
+            }
+
+        interest_context = self._get_user_interest_context(user_id=user_id, source_ids=[])
+        recent_viewed = [
+            pid
+            for pid in interest_context.get("recent_interest_products", [])[:8]
+            if pid and pid not in exclude
+        ]
+
+        if not recent_viewed:
+            purchased_set, cart_set, wishlist_set = self.get_user_product_sets(user_id)
+            recent_viewed = list(cart_set or wishlist_set or purchased_set)
+            recent_viewed = [pid for pid in recent_viewed if pid not in exclude]
+
+        return recent_viewed[:8], interest_context
 
     def _fetch_product_profiles(
         self,
@@ -544,3 +557,4 @@ class SceneRecommendationFilter:
                 }
             )
         return items
+
