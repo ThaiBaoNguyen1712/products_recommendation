@@ -23,6 +23,7 @@ PRODUCT_IDS_PATH = DATA_DIR / "product_ids.json"
 PRODUCT_VECTORS_PATH = DATA_DIR / "product_vectors.npy"
 INDEX_META_PATH = DATA_DIR / "index_meta.json"
 ACCESSORY_RULES_PATH = DATA_DIR / "accessory_rules.json"
+COMPATIBILITY_RULES_PATH = DATA_DIR / "compatibility_rules.json"
 OFFLINE_RERANK_SCORES_PATH = DATA_DIR / "offline_rerank_scores.json"
 LEGACY_BEHAVIOR_SCORES_PATH = DATA_DIR / "behavior_scores.json"
 
@@ -35,6 +36,70 @@ DEFAULT_ACCESSORY_RULES = {
     "android_phone": ["phone_case", "screen_protector", "charger", "earbuds", "power_bank"],
     "monitor": ["hdmi_cable", "displayport_cable", "monitor_arm", "keyboard", "mouse"],
     "desktop_pc": ["monitor", "keyboard", "mouse", "speaker", "ups"],
+}
+
+DEFAULT_COMPATIBILITY_RULES = {
+    "meta": {
+        "schema_version": 1,
+        "description": "Data-driven cart compatibility filters. Domain-specific terms live in data, not Python code.",
+    },
+    "rules": {
+        "dien_thoai": {
+            "target_categories": ["phu_kien", "dong_ho_thong_minh"],
+            "target_category_limits": {"phu_kien": 24, "dong_ho_thong_minh": 3},
+            "include_any": [
+                "airpods", "tai_nghe", "earbuds", "buds", "op_lung", "magsafe",
+                "sac", "cu_sac", "sac_du_phong", "cap", "cable", "pin_du_phong", "cuong_luc", "kinh_cuong_luc",
+                "screen", "protector", "adapter", "dong_ho", "watch"
+            ],
+            "exclude_any": [
+                "camera", "may_in", "man_hinh", "screenbar", "den_man_hinh", "day_deo",
+                "bon_ngam", "hut_bui", "loc_khong_khi"
+            ]
+        },
+        "may_tinh_bang": {
+            "target_categories": ["phu_kien"],
+            "target_category_limits": {"phu_kien": 24},
+            "include_any": [
+                "airpods", "tai_nghe", "ban_phim", "but", "pencil", "hub", "gia_do",
+                "op_lung", "bao_da", "sac", "cu_sac", "cap", "adapter", "pin_du_phong",
+                "kinh_cuong_luc"
+            ],
+            "exclude_any": ["camera", "bon_ngam", "hut_bui", "loc_khong_khi", "iphone", "magsafe"]
+        },
+        "laptop": {
+            "target_categories": ["phu_kien", "man_hinh", "may_in"],
+            "target_category_limits": {"phu_kien": 18, "man_hinh": 4, "may_in": 3},
+            "include_any": [
+                "chuot", "mouse", "ban_phim", "keyboard", "usb", "hub", "cap",
+                "cable", "tai_nghe", "headset", "loa", "cooling", "de_tan_nhiet",
+                "balo", "tui_chong_soc", "adapter"
+            ],
+            "exclude_any": ["bon_ngam", "hut_bui", "loc_khong_khi"]
+        },
+        "may_tinh_de_ban": {
+            "target_categories": ["phu_kien", "man_hinh", "may_in"],
+            "target_category_limits": {"phu_kien": 18, "man_hinh": 4, "may_in": 3},
+            "include_any": [
+                "chuot", "mouse", "ban_phim", "keyboard", "usb", "hub", "cap",
+                "cable", "tai_nghe", "headset", "loa", "adapter"
+            ],
+            "exclude_any": ["bon_ngam", "hut_bui", "loc_khong_khi"]
+        },
+        "man_hinh": {
+            "target_categories": ["phu_kien"],
+            "target_category_limits": {"phu_kien": 24},
+            "include_any": [
+                "gia_treo", "arm", "chan_de", "hdmi", "displayport", "cap",
+                "cable", "den_man_hinh", "screenbar", "ve_sinh_man_hinh",
+                "hub", "adapter"
+            ],
+            "exclude_any": [
+                "op_lung", "iphone", "ipad", "tablet", "may_tinh_bang", "lightning", "sac",
+                "bon_ngam", "hut_bui", "loc_khong_khi", "noi_chien"
+            ]
+        }
+    }
 }
 
 _hashing_vectorizer = HashingVectorizer(
@@ -236,6 +301,11 @@ def _write_default_accessory_rules() -> None:
         _write_json(ACCESSORY_RULES_PATH, DEFAULT_ACCESSORY_RULES)
 
 
+def _write_default_compatibility_rules() -> None:
+    if not COMPATIBILITY_RULES_PATH.exists():
+        _write_json(COMPATIBILITY_RULES_PATH, DEFAULT_COMPATIBILITY_RULES)
+
+
 def _write_default_offline_rerank_scores() -> None:
     if not OFFLINE_RERANK_SCORES_PATH.exists():
         _write_json(OFFLINE_RERANK_SCORES_PATH, {"meta": {"status": "empty"}, "homepage": {}, "wishlist": {}, "cart": {}})
@@ -295,6 +365,7 @@ def _write_index_files(
     if LEGACY_BEHAVIOR_SCORES_PATH.exists():
         LEGACY_BEHAVIOR_SCORES_PATH.unlink()
     _write_default_accessory_rules()
+    _write_default_compatibility_rules()
     _write_default_offline_rerank_scores()
 
     index_meta = {
@@ -314,6 +385,7 @@ def _write_index_files(
             "product_ids": _display_path(PRODUCT_IDS_PATH),
             "product_vectors": _display_path(PRODUCT_VECTORS_PATH),
             "accessory_rules": _display_path(ACCESSORY_RULES_PATH),
+            "compatibility_rules": _display_path(COMPATIBILITY_RULES_PATH),
             "offline_rerank_scores": _display_path(OFFLINE_RERANK_SCORES_PATH),
         },
     }
@@ -350,6 +422,7 @@ def ensure_file_index(db_engine: Engine) -> dict[str, Any]:
         INDEX_META_PATH,
     ]
     _write_default_accessory_rules()
+    _write_default_compatibility_rules()
     _write_default_offline_rerank_scores()
     if all(path.exists() for path in required_paths):
         return read_index_status()
@@ -423,6 +496,7 @@ def sync_product_index(db_engine: Engine, product_sys_id: str, action: str) -> d
 def read_index_status() -> dict[str, Any]:
     _ensure_data_dir()
     _write_default_accessory_rules()
+    _write_default_compatibility_rules()
     _write_default_offline_rerank_scores()
 
     file_status = {
@@ -431,6 +505,7 @@ def read_index_status() -> dict[str, Any]:
         "product_vectors": PRODUCT_VECTORS_PATH.exists(),
         "index_meta": INDEX_META_PATH.exists(),
         "accessory_rules": ACCESSORY_RULES_PATH.exists(),
+        "compatibility_rules": COMPATIBILITY_RULES_PATH.exists(),
         "offline_rerank_scores": OFFLINE_RERANK_SCORES_PATH.exists(),
     }
 

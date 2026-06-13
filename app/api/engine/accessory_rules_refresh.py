@@ -46,7 +46,7 @@ def _load_existing_rules() -> dict[str, list[str]]:
 
 def _slugify(value: Any) -> str:
     text = str(value or "").strip().lower()
-    text = text.replace("đ", "d")
+    text = text.replace("\u0111", "d").replace("\u0110", "d")
     text = unicodedata.normalize("NFKD", text)
     text = "".join(char for char in text if not unicodedata.combining(char))
     text = re.sub(r"[^a-z0-9]+", "_", text)

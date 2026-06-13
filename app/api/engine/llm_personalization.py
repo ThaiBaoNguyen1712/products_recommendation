@@ -100,21 +100,18 @@ class OpenRouterPersonalizationReranker:
         candidate_products: list[dict[str, Any]],
         top_n: int,
     ) -> dict[str, Any]:
+        scene_objective = self._scene_objective(scene)
         system_prompt = (
             "Rank ecommerce candidate product IDs for a technology store. "
-            "Use only provided candidate IDs. Favor relevance, accessory fit, price fit, brand/category fit, and stock. "
+            f"Current scene objective: {scene_objective}. "
+            "Use only provided candidate IDs. Do not invent IDs. "
             "Return strict JSON only with this shape: {\"ranked_product_ids\": [\"...\"]}."
         )
 
         user_prompt = {
             "scene": scene,
             "top_n": top_n,
-            "rules": [
-                "cart/wishlist: favor complementary add-ons",
-                "homepage: favor interest relevance and diversity",
-                "prefer in-stock items",
-                "penalize extreme price mismatch",
-            ],
+            "rules": self._scene_rules(scene),
             "sources": source_products,
             "candidates": candidate_products,
         }
@@ -130,6 +127,42 @@ class OpenRouterPersonalizationReranker:
         if self.reasoning_enabled:
             payload["reasoning"] = {"enabled": True}
         return payload
+
+    def _scene_objective(self, scene: str) -> str:
+        normalized_scene = str(scene or "").strip().lower()
+        if normalized_scene == "cart":
+            return "cross-sell, bundle completion, and checkout purchase completion"
+        if normalized_scene == "wishlist":
+            return "similar alternatives, upgrade or downgrade options, and preference fit"
+        return "discovery, broader interest exploration, and diverse relevant products"
+
+    def _scene_rules(self, scene: str) -> list[str]:
+        normalized_scene = str(scene or "").strip().lower()
+        base_rules = [
+            "prefer in-stock candidates",
+            "penalize extreme price mismatch",
+            "return the strongest product IDs first",
+        ]
+        if normalized_scene == "cart":
+            return [
+                "favor accessories and products likely bought together with the source products",
+                "favor bundle-completion products over same-category alternatives",
+                "for expensive source products, cheaper compatible accessories are usually better",
+                *base_rules,
+            ]
+        if normalized_scene == "wishlist":
+            return [
+                "favor close substitutes and similar alternatives to saved products",
+                "include sensible upgrade or downgrade options when they match the source category",
+                "prefer candidates near the source product price unless clearly better",
+                *base_rules,
+            ]
+        return [
+            "favor recent interest and category affinity",
+            "include some category or brand exploration instead of near-duplicates only",
+            "prefer a diverse set of useful discovery candidates",
+            *base_rules,
+        ]
 
     def _post_with_retry(self, payload: dict[str, Any]) -> httpx.Response:
         headers = {

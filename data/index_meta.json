@@ -5,16 +5,17 @@
   "vector_format": "numpy_float32",
   "vector_dim": 2048,
   "hash_features": 2048,
-  "product_count": 1003,
+  "product_count": 1030,
   "trigger": "admin_rebuild",
   "sync_action": "rebuild",
   "synced_product_sys_id": null,
-  "built_at": "2026-06-11T16:07:06+00:00",
+  "built_at": "2026-06-13T03:06:20+00:00",
   "files": {
     "products": "data\\products.json",
     "product_ids": "data\\product_ids.json",
     "product_vectors": "data\\product_vectors.npy",
     "accessory_rules": "data\\accessory_rules.json",
+    "compatibility_rules": "data\\compatibility_rules.json",
     "offline_rerank_scores": "data\\offline_rerank_scores.json"
   }
 }

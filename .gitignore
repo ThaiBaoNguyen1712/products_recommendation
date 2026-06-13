@@ -1,11 +1,15 @@
-# Ignore file for
+# Local environment and secrets
 env.py
 .env
+.env.*
+
+# Python cache and virtual environments
 __pycache__/
 *.pyc
 venv/
+.venv/
 antenv/
+
+# Local tooling and logs
 *.log
 .vercel/
-
-.vercel

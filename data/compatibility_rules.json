@@ -1,0 +1,253 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "source": "curated_demo",
+    "description": "Stable compatibility rules for local demo flows. Rebuild should preserve this file unless LLM refresh is explicitly enabled."
+  },
+  "rules": {
+    "dien_thoai": {
+      "target_categories": [
+        "phu_kien",
+        "dong_ho_thong_minh"
+      ],
+      "target_category_limits": {
+        "phu_kien": 24,
+        "dong_ho_thong_minh": 1
+      },
+      "include_any": [
+        "airpods",
+        "tai_nghe",
+        "earbuds",
+        "buds",
+        "op_lung",
+        "magsafe",
+        "sac",
+        "cu_sac",
+        "sac_du_phong",
+        "pin_du_phong",
+        "cap",
+        "cable",
+        "lightning",
+        "usb_c",
+        "adapter",
+        "cuong_luc",
+        "kinh_cuong_luc",
+        "screen_protector",
+        "apple_watch",
+        "watch_series",
+        "watch_se",
+        "watch_ultra"
+      ],
+      "exclude_any": [
+        "camera",
+        "may_in",
+        "man_hinh",
+        "screenbar",
+        "den_man_hinh",
+        "day_deo",
+        "bon_ngam",
+        "hut_bui",
+        "loc_khong_khi",
+        "robot_hut_bui",
+        "noi_chien",
+        "ban_chai",
+        "massage",
+        "sung_massage",
+        "may_say_toc",
+        "purifier",
+        "vacuum",
+        "tablet",
+        "may_tinh_bang",
+        "ipad",
+        "gimbal",
+        "tripod",
+        "home_security",
+        "xiaomi_watch",
+        "huawei_watch",
+        "mibro",
+        "amazfit",
+        "kospet",
+        "mykid",
+        "imoo",
+        "elfdigi"
+      ]
+    },
+    "may_tinh_bang": {
+      "target_categories": [
+        "phu_kien"
+      ],
+      "target_category_limits": {
+        "phu_kien": 24
+      },
+      "include_any": [
+        "airpods",
+        "tai_nghe",
+        "ban_phim",
+        "keyboard",
+        "but",
+        "pencil",
+        "hub",
+        "usb_c",
+        "gia_do",
+        "bao_da",
+        "op_lung",
+        "sac",
+        "cu_sac",
+        "cap",
+        "cable",
+        "adapter",
+        "pin_du_phong",
+        "kinh_cuong_luc",
+        "screen_protector"
+      ],
+      "exclude_any": [
+        "camera",
+        "bon_ngam",
+        "hut_bui",
+        "loc_khong_khi",
+        "iphone",
+        "magsafe",
+        "lightning",
+        "may_in",
+        "screenbar",
+        "man_hinh",
+        "gimbal",
+        "tripod",
+        "watch"
+      ]
+    },
+    "man_hinh": {
+      "target_categories": [
+        "phu_kien"
+      ],
+      "target_category_limits": {
+        "phu_kien": 24
+      },
+      "include_any": [
+        "gia_treo",
+        "arm",
+        "chan_de",
+        "hdmi",
+        "displayport",
+        "usb_c_to_hdmi",
+        "cap",
+        "cable",
+        "den_man_hinh",
+        "screenbar",
+        "ve_sinh_man_hinh",
+        "adapter",
+        "hub"
+      ],
+      "exclude_any": [
+        "op_lung",
+        "iphone",
+        "ipad",
+        "tablet",
+        "may_tinh_bang",
+        "lightning",
+        "sac",
+        "bon_ngam",
+        "hut_bui",
+        "loc_khong_khi",
+        "noi_chien",
+        "watch",
+        "tai_nghe",
+        "airpods"
+      ]
+    },
+    "may_tinh_de_ban": {
+      "target_categories": [
+        "phu_kien",
+        "man_hinh",
+        "may_in"
+      ],
+      "target_category_limits": {
+        "phu_kien": 18,
+        "man_hinh": 4,
+        "may_in": 3
+      },
+      "include_any": [
+        "chuot",
+        "mouse",
+        "ban_phim",
+        "keyboard",
+        "hdmi",
+        "displayport",
+        "usb",
+        "hub",
+        "cap",
+        "cable",
+        "adapter",
+        "loa",
+        "speaker",
+        "tai_nghe",
+        "headset",
+        "man_hinh"
+      ],
+      "exclude_any": [
+        "bon_ngam",
+        "hut_bui",
+        "loc_khong_khi",
+        "op_lung",
+        "iphone",
+        "ipad",
+        "tablet",
+        "watch",
+        "camera",
+        "airpods",
+        "magsafe",
+        "lightning",
+        "cu_sac",
+        "sac_du_phong",
+        "pin_du_phong"
+      ]
+    },
+    "laptop": {
+      "target_categories": [
+        "phu_kien",
+        "man_hinh",
+        "may_in"
+      ],
+      "target_category_limits": {
+        "phu_kien": 18,
+        "man_hinh": 4,
+        "may_in": 3
+      },
+      "include_any": [
+        "chuot",
+        "mouse",
+        "ban_phim",
+        "keyboard",
+        "usb",
+        "hub",
+        "cap",
+        "cable",
+        "adapter",
+        "tai_nghe",
+        "headset",
+        "loa",
+        "speaker",
+        "cooling",
+        "de_tan_nhiet",
+        "balo",
+        "tui_chong_soc",
+        "man_hinh"
+      ],
+      "exclude_any": [
+        "bon_ngam",
+        "hut_bui",
+        "loc_khong_khi",
+        "op_lung",
+        "iphone",
+        "ipad",
+        "watch",
+        "camera",
+        "lightning",
+        "magsafe",
+        "cu_sac",
+        "sac_du_phong",
+        "pin_du_phong"
+      ]
+    }
+  }
+}

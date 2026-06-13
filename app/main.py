@@ -6,6 +6,7 @@ from fastapi.concurrency import asynccontextmanager
 from pydantic import BaseModel, Field
 
 from app.api.engine.accessory_rules_refresh import refresh_accessory_rules
+from app.api.engine.compatibility_rules_refresh import refresh_compatibility_rules
 from app.api.engine.SceneRecommendationFilter import SceneRecommendationFilter
 from app.api.engine.content_based import load_all_data, recommend
 from app.api.engine.index_store import build_file_index, ensure_file_index, read_index_status, sync_product_index
@@ -119,12 +120,14 @@ def _read_cached_entry(
     limit: int,
     user_id: int | None = None,
     product_sys_id: str | None = None,
+    state_token: str | None = None,
 ) -> dict[str, Any] | None:
     cache_key = recommendation_cache.build_key(
         scene=scene,
         limit=limit,
         user_id=user_id,
         product_sys_id=product_sys_id,
+        state_token=state_token,
     )
     cached_entry = recommendation_cache.get_json(cache_key)
     if not cached_entry:
@@ -165,12 +168,14 @@ def _write_cached_entry(
     entry: dict[str, Any],
     user_id: int | None = None,
     product_sys_id: str | None = None,
+    state_token: str | None = None,
 ) -> None:
     cache_key = recommendation_cache.build_key(
         scene=scene,
         limit=limit,
         user_id=user_id,
         product_sys_id=product_sys_id,
+        state_token=state_token,
     )
     recommendation_cache.set_json(cache_key, entry, ttl_seconds=get_scene_cache_ttl(scene))
 
@@ -205,6 +210,7 @@ def get_index_status():
 def rebuild_index():
     artifact_status = build_file_index(engine, trigger="admin_rebuild")
     accessory_rules_status = refresh_accessory_rules(trigger="admin_rebuild")
+    compatibility_rules_status = refresh_compatibility_rules(trigger="admin_rebuild")
     load_all_data()
     offline_refresh = refresh_offline_rerank_scores(engine, trigger="admin_rebuild")
     cache_version = recommendation_cache.invalidate_all()
@@ -212,6 +218,7 @@ def rebuild_index():
         "message": "File-based recommendation index rebuilt successfully.",
         "index": artifact_status,
         "accessory_rules": accessory_rules_status,
+        "compatibility_rules": compatibility_rules_status,
         "offline_rerank": offline_refresh,
         "cache_version": cache_version,
     }
@@ -276,162 +283,183 @@ async def get_similar_recommendations(product_sys_id: str, response: Response, l
 @app.get("/api/v1/recommendations/users/{user_id}/detail/{product_sys_id}")
 async def get_detail_recommendations(user_id: int, product_sys_id: str, response: Response, limit: int = 12):
     started_at = perf_counter()
-    cached_entry = _read_cached_entry(
-        scene="detail",
-        user_id=user_id,
-        product_sys_id=product_sys_id,
-        limit=limit,
-        response=response,
-    )
-    if cached_entry is not None:
-        return cached_entry["payload"]
-
     recommender = SceneRecommendationFilter()
-    recommendations = recommender.get_recommendations_detail(
-        user_id=user_id,
-        product_sys_id=product_sys_id,
-        top_n=limit,
-    )
-    response_time_ms = (perf_counter() - started_at) * 1000
-    _set_response_headers(
-        response=response,
-        response_time_ms=response_time_ms,
-        llm_latency_ms=recommender.last_llm_latency_ms,
-        llm_status=recommender.last_llm_status,
-        cache_status="MISS",
-    )
-    cache_entry = _build_cache_entry(
-        scene="detail",
-        recommendation_items=recommender.last_recommendation_items,
-        recommendations=recommendations,
-        llm_latency_ms=recommender.last_llm_latency_ms,
-        llm_status=recommender.last_llm_status,
-        user_id=user_id,
-        product_sys_id=product_sys_id,
-        source_ids=recommender.last_source_ids,
-    )
-    _write_cached_entry(
-        scene="detail",
-        limit=limit,
-        user_id=user_id,
-        product_sys_id=product_sys_id,
-        entry=cache_entry,
-    )
-    return cache_entry["payload"]
+    try:
+        state_token = recommender.get_scene_cache_token(scene="detail", user_id=user_id)
+        cached_entry = _read_cached_entry(
+            scene="detail",
+            user_id=user_id,
+            product_sys_id=product_sys_id,
+            limit=limit,
+            response=response,
+            state_token=state_token,
+        )
+        if cached_entry is not None:
+            return cached_entry["payload"]
+
+        recommendations = recommender.get_recommendations_detail(
+            user_id=user_id,
+            product_sys_id=product_sys_id,
+            top_n=limit,
+        )
+        response_time_ms = (perf_counter() - started_at) * 1000
+        _set_response_headers(
+            response=response,
+            response_time_ms=response_time_ms,
+            llm_latency_ms=recommender.last_llm_latency_ms,
+            llm_status=recommender.last_llm_status,
+            cache_status="MISS",
+        )
+        cache_entry = _build_cache_entry(
+            scene="detail",
+            recommendation_items=recommender.last_recommendation_items,
+            recommendations=recommendations,
+            llm_latency_ms=recommender.last_llm_latency_ms,
+            llm_status=recommender.last_llm_status,
+            user_id=user_id,
+            product_sys_id=product_sys_id,
+            source_ids=recommender.last_source_ids,
+        )
+        _write_cached_entry(
+            scene="detail",
+            limit=limit,
+            user_id=user_id,
+            product_sys_id=product_sys_id,
+            entry=cache_entry,
+            state_token=state_token,
+        )
+        return cache_entry["payload"]
+    finally:
+        recommender.close()
 
 
 @app.get("/api/v1/recommendations/users/{user_id}/wishlist")
 async def get_wishlist_recommendations(user_id: int, response: Response, limit: int = 15):
     started_at = perf_counter()
-    cached_entry = _read_cached_entry(
-        scene="wishlist",
-        user_id=user_id,
-        limit=limit,
-        response=response,
-    )
-    if cached_entry is not None:
-        return cached_entry["payload"]
-
     recommender = SceneRecommendationFilter()
-    recommendations = recommender.get_recommendations_wishlist(
-        user_id=user_id,
-        top_n=limit,
-    )
-    response_time_ms = (perf_counter() - started_at) * 1000
-    _set_response_headers(
-        response=response,
-        response_time_ms=response_time_ms,
-        llm_latency_ms=recommender.last_llm_latency_ms,
-        llm_status=recommender.last_llm_status,
-        cache_status="MISS",
-    )
-    cache_entry = _build_cache_entry(
-        scene="wishlist",
-        recommendation_items=recommender.last_recommendation_items,
-        recommendations=recommendations,
-        llm_latency_ms=recommender.last_llm_latency_ms,
-        llm_status=recommender.last_llm_status,
-        user_id=user_id,
-        source_ids=recommender.last_source_ids,
-    )
-    _write_cached_entry(scene="wishlist", limit=limit, user_id=user_id, entry=cache_entry)
-    return cache_entry["payload"]
+    try:
+        state_token = recommender.get_scene_cache_token(scene="wishlist", user_id=user_id)
+        cached_entry = _read_cached_entry(
+            scene="wishlist",
+            user_id=user_id,
+            limit=limit,
+            response=response,
+            state_token=state_token,
+        )
+        if cached_entry is not None:
+            return cached_entry["payload"]
+
+        recommendations = recommender.get_recommendations_wishlist(
+            user_id=user_id,
+            top_n=limit,
+        )
+        response_time_ms = (perf_counter() - started_at) * 1000
+        _set_response_headers(
+            response=response,
+            response_time_ms=response_time_ms,
+            llm_latency_ms=recommender.last_llm_latency_ms,
+            llm_status=recommender.last_llm_status,
+            cache_status="MISS",
+        )
+        cache_entry = _build_cache_entry(
+            scene="wishlist",
+            recommendation_items=recommender.last_recommendation_items,
+            recommendations=recommendations,
+            llm_latency_ms=recommender.last_llm_latency_ms,
+            llm_status=recommender.last_llm_status,
+            user_id=user_id,
+            source_ids=recommender.last_source_ids,
+        )
+        _write_cached_entry(
+            scene="wishlist",
+            limit=limit,
+            user_id=user_id,
+            entry=cache_entry,
+            state_token=state_token,
+        )
+        return cache_entry["payload"]
+    finally:
+        recommender.close()
 
 
 @app.get("/api/v1/recommendations/users/{user_id}/cart")
 async def get_cart_recommendations(user_id: int, response: Response, limit: int = 15):
     started_at = perf_counter()
-    cached_entry = _read_cached_entry(
-        scene="cart",
-        user_id=user_id,
-        limit=limit,
-        response=response,
-    )
-    if cached_entry is not None:
-        return cached_entry["payload"]
-
     recommender = SceneRecommendationFilter()
-    recommendations = recommender.get_recommendations_cart(
-        user_id=user_id,
-        top_n=limit,
-    )
-    response_time_ms = (perf_counter() - started_at) * 1000
-    _set_response_headers(
-        response=response,
-        response_time_ms=response_time_ms,
-        llm_latency_ms=recommender.last_llm_latency_ms,
-        llm_status=recommender.last_llm_status,
-        cache_status="MISS",
-    )
-    cache_entry = _build_cache_entry(
-        scene="cart",
-        recommendation_items=recommender.last_recommendation_items,
-        recommendations=recommendations,
-        llm_latency_ms=recommender.last_llm_latency_ms,
-        llm_status=recommender.last_llm_status,
-        user_id=user_id,
-        source_ids=recommender.last_source_ids,
-    )
-    _write_cached_entry(scene="cart", limit=limit, user_id=user_id, entry=cache_entry)
-    return cache_entry["payload"]
+    try:
+        recommendations = recommender.get_recommendations_cart(
+            user_id=user_id,
+            top_n=limit,
+        )
+        response_time_ms = (perf_counter() - started_at) * 1000
+        _set_response_headers(
+            response=response,
+            response_time_ms=response_time_ms,
+            llm_latency_ms=recommender.last_llm_latency_ms,
+            llm_status=recommender.last_llm_status,
+            cache_status="MISS",
+        )
+        cache_entry = _build_cache_entry(
+            scene="cart",
+            recommendation_items=recommender.last_recommendation_items,
+            recommendations=recommendations,
+            llm_latency_ms=recommender.last_llm_latency_ms,
+            llm_status=recommender.last_llm_status,
+            user_id=user_id,
+            source_ids=recommender.last_source_ids,
+        )
+        return cache_entry["payload"]
+    finally:
+        recommender.close()
 
 
 @app.get("/api/v1/recommendations/users/{user_id}/homepage")
 async def get_homepage_recommendations(user_id: int, response: Response, limit: int = 15):
     started_at = perf_counter()
-    cached_entry = _read_cached_entry(
-        scene="homepage",
-        user_id=user_id,
-        limit=limit,
-        response=response,
-    )
-    if cached_entry is not None:
-        return cached_entry["payload"]
-
     recommender = SceneRecommendationFilter()
-    recommendations = recommender.get_recommendations_homepage(
-        user_id=user_id,
-        top_n=limit,
-    )
-    response_time_ms = (perf_counter() - started_at) * 1000
-    _set_response_headers(
-        response=response,
-        response_time_ms=response_time_ms,
-        llm_latency_ms=recommender.last_llm_latency_ms,
-        llm_status=recommender.last_llm_status,
-        cache_status="MISS",
-    )
-    cache_entry = _build_cache_entry(
-        scene="homepage",
-        recommendation_items=recommender.last_recommendation_items,
-        recommendations=recommendations,
-        llm_latency_ms=recommender.last_llm_latency_ms,
-        llm_status=recommender.last_llm_status,
-        user_id=user_id,
-        source_ids=recommender.last_source_ids,
-    )
-    _write_cached_entry(scene="homepage", limit=limit, user_id=user_id, entry=cache_entry)
-    return cache_entry["payload"]
+    try:
+        state_token = recommender.get_scene_cache_token(scene="homepage", user_id=user_id)
+        cached_entry = _read_cached_entry(
+            scene="homepage",
+            user_id=user_id,
+            limit=limit,
+            response=response,
+            state_token=state_token,
+        )
+        if cached_entry is not None:
+            return cached_entry["payload"]
+
+        recommendations = recommender.get_recommendations_homepage(
+            user_id=user_id,
+            top_n=limit,
+        )
+        response_time_ms = (perf_counter() - started_at) * 1000
+        _set_response_headers(
+            response=response,
+            response_time_ms=response_time_ms,
+            llm_latency_ms=recommender.last_llm_latency_ms,
+            llm_status=recommender.last_llm_status,
+            cache_status="MISS",
+        )
+        cache_entry = _build_cache_entry(
+            scene="homepage",
+            recommendation_items=recommender.last_recommendation_items,
+            recommendations=recommendations,
+            llm_latency_ms=recommender.last_llm_latency_ms,
+            llm_status=recommender.last_llm_status,
+            user_id=user_id,
+            source_ids=recommender.last_source_ids,
+        )
+        _write_cached_entry(
+            scene="homepage",
+            limit=limit,
+            user_id=user_id,
+            entry=cache_entry,
+            state_token=state_token,
+        )
+        return cache_entry["payload"]
+    finally:
+        recommender.close()
 
 
 @app.get("/content_based_filter/{product_sys_id}", deprecated=True, include_in_schema=False)
